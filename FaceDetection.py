@@ -130,7 +130,7 @@ with mp_face_detection.FaceDetection(min_detection_confidence=0.5) as face_detec
         face = image[max(start_y, 0):min(end_y, image.shape[0]), max(start_x, 0):min(end_x, image.shape[1])]
         
         # Resize face and write into cropped_face_out
-        face = cv2.resize(face, (640,480))
+        face = cv2.resize(face, (640,640))
         #print(f'Writing a face of size {face.shape} to cropped_face_out.')
         #print(f'Writing a face of size {face.shape} at frame {cap.get(cv2.CAP_PROP_POS_FRAMES)}')
         # cv2.imwrite(f'face_{cap.get(cv2.CAP_PROP_POS_FRAMES)}.png', face)
