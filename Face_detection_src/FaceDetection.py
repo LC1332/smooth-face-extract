@@ -18,7 +18,7 @@ class MovingAverageFilter:
         while len(self.data) > self.window_size:
             self.data.pop(0)
         if len(self.data) > 0:
-            return float(np.mean(self.data))  #
+            return float(np.mean(self.data))  
         else:
             return None
 
@@ -78,9 +78,10 @@ elif args.filter_type == "ma":
 missing_face_counter = 0
 current_center = None  
 current_half_win_size = None  
+pre_center = None
 
 current_frame_no = 0
-with mp_face_detection.FaceDetection(min_detection_confidence=0.5) as face_detection:
+with mp_face_detection.FaceDetection(min_detection_confidence=0.7) as face_detection:
     while cap.isOpened():
         success, image = cap.read()
         if not success:
@@ -90,7 +91,6 @@ with mp_face_detection.FaceDetection(min_detection_confidence=0.5) as face_detec
         if current_frame_no < start_frame_no:
             continue
 
-        # 额外的结束帧检查
         elif current_frame_no > end_frame_no:
             break
 
@@ -114,7 +114,17 @@ with mp_face_detection.FaceDetection(min_detection_confidence=0.5) as face_detec
             center_y = max_face_detection.location_data.relative_bounding_box.ymin + \
                        max_face_detection.location_data.relative_bounding_box.height / 2
 
-            current_center = (center_x_filter.update(center_x), center_y_filter.update(center_y))
+            if pre_center is None:
+                pre_center = current_center = (center_x_filter.update(center_x), center_y_filter.update(center_y))
+            else:
+                _center = (center_x_filter.update(center_x), center_y_filter.update(center_y))
+                diff = [_center[0] - pre_center[0], _center[1] - pre_center[1]]
+                speed = abs(diff[0]*fps) if abs(diff[0]) >= abs(diff[1]) else abs(diff[1]*fps)
+                if speed > maxcenter_speed:
+                    print(f'Skipped a frame where speed ({speed}) was greater than the maximum speed ({maxcenter_speed}).')
+                else:
+                    current_center = _center
+                pre_center = current_center
 
             half_win_size = max(max_face_detection.location_data.relative_bounding_box.width,
                                 max_face_detection.location_data.relative_bounding_box.height) / 2 * (
@@ -128,25 +138,27 @@ with mp_face_detection.FaceDetection(min_detection_confidence=0.5) as face_detec
                 current_center = None
                 current_half_win_size = None
 
-        if current_center is not None and current_half_win_size is not None:
-            start_x = int((current_center[0] - current_half_win_size) * image.shape[1])
-            start_y = int((current_center[1] - current_half_win_size) * image.shape[0])
-            end_x = int((current_center[0] + current_half_win_size) * image.shape[1])
-            end_y = int((current_center[1] + current_half_win_size) * image.shape[0])
+        if current_center is not None:
+            start_x = int(current_center[0] * image.shape[1] - 256)
+            start_y = int(current_center[1] * image.shape[0] - 256)
+            end_x = int(current_center[0] * image.shape[1] + 256)
+            end_y = int(current_center[1] * image.shape[0] + 256)
             face = image[max(start_y, 0):min(end_y, image.shape[0]), max(start_x, 0):min(end_x, image.shape[1])]
-
-            face = cv2.resize(face, (640, 640))
+    
+            resized_face = cv2.resize(face, (512, 512))
 
             if "cropped_face_out" not in locals():
-                cropped_face_out = cv2.VideoWriter('output/cropped_face.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),
-                                                   fps, (face.shape[1], face.shape[0]))
-            cropped_face_out.write(face)
+                cropped_face_out = cv2.VideoWriter('output/cropped_face.avi', cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), fps, (512, 512))
 
-        raw_clip_out.write(image)  # 写入原始剪辑
+            output_image = np.zeros((512, 512, 3), dtype=np.uint8)
+            output_image[:(resized_face.shape[0]), :(resized_face.shape[1])] = resized_face
+            cropped_face_out.write(output_image)
+
+        raw_clip_out.write(image)
 
 # 释放资源
 cap.release()
 raw_clip_out.release()
-if "cropped_face_out" in locals():  # 如果存在，释放资源
+if "cropped_face_out" in locals():
     cropped_face_out.release()
 box_position_file.close()
